@@ -101,8 +101,7 @@ for job in job_paths_to_read:
                             
                             dizio[pname]["JobID"].append(f"{job.split("/")[-1]}_event{nev}")
                             dizio[pname]["Primary_energy"].append(ev.header["total_energy"])
-                            h_first_interaction = ev.header["starting_height"] + ev.header[6]
-                            dizio[pname]["Starting_height"].append(h_first_interaction)
+                            dizio[pname]["Starting_height"].append(-ev.header[6])
                             dizio[pname]["Number_of_particles"].append(len(particle_temp))
                             dizio[pname]["Cumulative_Energy_of_particles"].append(np.sqrt((particle_temp["px"]**2+particle_temp["py"]**2+particle_temp["pz"]**2).sum()))
                             dizio[pname]["abspx_max"].append(np.max(np.abs(particle_temp["px"])))
