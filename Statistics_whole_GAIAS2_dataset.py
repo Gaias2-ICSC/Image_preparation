@@ -2,29 +2,43 @@ from corsikaio import CorsikaParticleFile
 import numpy as np
 import os 
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-jobs_parent_path = "/home/messuti/DataCorsika7"                             # TODO path where to find folders of all jobs
-interaction_model = "7631"                                                  # TODO read only one interaction model. Chose one from "7631", "7611", "7231", "7211"
-#img_saving_folder = "/home/messuti/DataCorsika7/imgs_xy/"
+import argparse
 
+# jobs_parent_path = "/home/messuti/DataCorsika7"                             # TODO path where to find folders of all jobs
+# output_path = "/home/messuti/Desktop/"                                      # Path to existing folder: where to output dataframes and error files
+# output_tag = ""                                                             # TODO string to be added to each .txt and .csv file's name in output
+# interaction_model = "7631"                                                  # TODO read only one interaction model. Chose one from "7631", "7611", "7231", "7211"
+# img_saving_folder = "/home/messuti/DataCorsika7/imgs_xy/"
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument("--file_of_paths", type=str, help="REQUIRED: File of all the paths of the files DATXXXXX to be read. Each line is the complete path of a file")
+parser.add_argument("--output_path", type=str, help="REQUIRED: Path to existing folder: where to output dataframes and error files")
+parser.add_argument("--output_tag", type=str, default="", help="Optional: String to be added to each .txt and .csv file's name in output")
+
+args = parser.parse_args()
+
+file_of_paths = args.file_of_paths
+output_path = args.output_path
+output_tag = args.output_tag
+
+
+perc = 0.9                                                                  # percentage of particles with lower px (py and x and y) on wich compute std
 particle_names =        ["mu_p","mu_a", "vie_p","vie_a","vimu_p","vimu_a"]  # identification names of particles I want to investigate
 particle_descriptions = [5000,  6000,   66000,  67000,  68000,   69000]     # code identification of particles in corsika
 part_des = particle_descriptions
 Npt = len(particle_names)                                                   # Number of Types of Particles investigated
 
-perc = 0.9                                                                  # TODO percentage of particles with lower px (py and x and y) on wich compute std
 quantities_of_interest = ["JobID","Primary_energy","Starting_height","Number_of_particles","Cumulative_Energy_of_particles",
                           "abspx_max","abspy_max","std_px_90_perc_particles","std_py_90_perc_particles","log10pzmax","log10pzmin","log10rmax", 
                           "std_x_90_perc_particles", "std_y_90_perc_particles"] + [f"log10r_Q0.{i+1}" for i in range (9)] # Q0.1 è quantile 10%..
 qoi = quantities_of_interest
 
-path_output = "/home/messuti/Desktop/"                              # Path to existing folder: where to output dataframes and error files
-if path_output[-1] != "/": path_output += "/"
-ef = open(f"{path_output}errori_lettura_file.txt","w")
-ee = open(f"{path_output}errori_lettura_eventi.txt","w")
-ep = open(f"{path_output}errori_lettura_particles.txt","w")
-edict = open(f"{path_output}errori_inserimento_valore_key.txt","w") # alcune volte avevo 0 particelle. quindi np.max o sum (non ricordo) dava problemi
+if output_path[-1] != "/": output_path += "/"
+ef = open(f"{output_path}errori_lettura_file_{output_tag}.txt","w")
+ee = open(f"{output_path}errori_lettura_eventi_{output_tag}.txt","w")
+ep = open(f"{output_path}errori_lettura_particles_{output_tag}.txt","w")
+edict = open(f"{output_path}errori_inserimento_valore_key_{output_tag}.txt","w") # alcune volte avevo 0 particelle. quindi np.max o sum (non ricordo) dava problemi
 
 
 
@@ -32,13 +46,18 @@ edict = open(f"{path_output}errori_inserimento_valore_key.txt","w") # alcune vol
 dizio={name:{key:[] for key in qoi} for name in particle_names} 
 
 
+job_paths_to_read=[]
+
+with open(file_of_paths, 'r') as rf:
+    for line in rf.readlines():
+        job_paths_to_read.append(line[:-1])     # Excluding "\n"
+
 # Browse list of job folders. Automatically read all jobs in folders nested in "jobs_parent_path"
 # Here I retrieve paths inside the jobs_parent_path that show "job" and "em" in the name
-job_paths_to_read=[]
-with os.scandir(jobs_parent_path) as entries:
-    for entry in entries:
-        if entry.is_dir() and "job" in str(entry.name) and "em" in str(entry.name) and str(interaction_model) in str(entry.name):
-                job_paths_to_read.append(entry.path)
+# with os.scandir(jobs_parent_path) as entries:
+#     for entry in entries:
+#         if entry.is_dir() and "job" in str(entry.name) and "em" in str(entry.name) and str(interaction_model) in str(entry.name):
+#                 job_paths_to_read.append(entry.path)
 
 count_entries = {name:0 for name in particle_names}
 
@@ -46,7 +65,7 @@ count_entries = {name:0 for name in particle_names}
 
 for job in job_paths_to_read:
     # parsing - it will be something like /path/job##_contver../DAT00## 
-    ff = job + f"/DAT{job.split("/")[-1].split("_")[0][3:].zfill(6)}"
+    ff = job # + f"/DAT{job.split("/")[-1].split("_")[0][3:].zfill(6)}"
     # Opening the selected file
     try:
         with CorsikaParticleFile(ff) as f:
@@ -82,7 +101,8 @@ for job in job_paths_to_read:
                             
                             dizio[pname]["JobID"].append(f"{job.split("/")[-1]}_event{nev}")
                             dizio[pname]["Primary_energy"].append(ev.header["total_energy"])
-                            dizio[pname]["Starting_height"].append(ev.header["starting_height"])    # TODO it does not work. It gives always 11282920.0
+                            h_first_interaction = ev.header["starting_height"] + ev.header[6]
+                            dizio[pname]["Starting_height"].append(h_first_interaction)
                             dizio[pname]["Number_of_particles"].append(len(particle_temp))
                             dizio[pname]["Cumulative_Energy_of_particles"].append(np.sqrt((particle_temp["px"]**2+particle_temp["py"]**2+particle_temp["pz"]**2).sum()))
                             dizio[pname]["abspx_max"].append(np.max(np.abs(particle_temp["px"])))
@@ -97,18 +117,7 @@ for job in job_paths_to_read:
                             dizio[pname]["std_y_90_perc_particles"].append(np.std(particle_perc_y)) # measure the dispersion of particles (outliers excluded)
                             for __ in range(9):
                                 dizio[pname][f"log10r_Q0.{__+1}"].append(np.quantile(log10r, (__+1)/10))
-
-
-                            # TODO uncomment for some plot (plot_x_y or plot_px_pz or other)
-                            # if nev > 200: break #i do not want too many plots
-                            # try:
-                            #     jobi = ff.split("/")[-2]
-                            #     energy = ev.header["total_energy"]
-                            #     if pname=="mu_p": plot_x_y(particle_temp,img_saving_folder,energy,jobi,nev,pname)
-                            # except Exception as mai:
-                            #     print("PLOT error", mai)
-
-                            
+                           
                             for key in dizio[pname]:
                                 #print(len(dizio[pname][key]),"\t", count_entries[pname])
                                 if len(dizio[pname][key])!=count_entries[pname]:
@@ -131,4 +140,4 @@ edict.close()
     
 for particle in dizio:
     df = pd.DataFrame.from_dict(dizio[particle])
-    df.to_csv(f"{path_output}{particle}_{interaction_model}.csv",index=False)
+    df.to_csv(f"{output_path}{particle}_{output_tag}.csv",index=False)
